@@ -3,6 +3,7 @@ package org.example.carrental;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * In-memory implementation of the CarRentalService.
@@ -24,14 +25,20 @@ public class InMemoryCarRentalService implements CarRentalService {
 
     private final CarInventory inventory;
 
-    // Stores reservations grouped by car type
+    // Reservations grouped by car type
     private final Map<CarType, List<Reservation>> reservationsByType =
+            new EnumMap<>(CarType.class);
+
+    // Lock per car type to allow parallel reservations for different categories
+    private final Map<CarType, ReentrantLock> locks =
             new EnumMap<>(CarType.class);
 
     public InMemoryCarRentalService(CarInventory inventory) {
         this.inventory = inventory;
+
         for (CarType type : CarType.values()) {
             reservationsByType.put(type, new ArrayList<>());
+            locks.put(type, new ReentrantLock());
         }
     }
 
@@ -43,35 +50,41 @@ public class InMemoryCarRentalService implements CarRentalService {
                 .plusDays(days)
                 .truncatedTo(ChronoUnit.MINUTES);
 
-        // Count overlapping reservations
-        long overlapping =
-                reservationsByType.get(type).stream()
-                        .filter(r -> r.overlaps(startDateTime, endDateTime))
-                        .count();
+        ReentrantLock lock = locks.get(type);
+        lock.lock();
 
-        int capacity = inventory.getCapacity(type);
+        try {
+            // Count overlapping reservations
+            long overlapping = reservationsByType.get(type).stream()
+                    .filter(r -> r.overlaps(startDateTime, endDateTime))
+                    .count();
 
-        if (overlapping >= capacity) {
-            throw new NoAvailabilityException(
-                    "No available " + type + " cars for the requested period.");
+            int capacity = inventory.getCapacity(type);
+
+            if (overlapping >= capacity) {
+                throw new NoAvailabilityException(
+                        "No available " + type + " cars for the requested period.");
+            }
+
+            // Insert reservation
+            Reservation reservation = new Reservation(type, startDateTime, endDateTime);
+            reservationsByType.get(type).add(reservation);
+
+            return reservation;
+
+        } finally {
+            lock.unlock();
         }
-
-        Reservation reservation = new Reservation(type, startDateTime, endDateTime);
-        reservationsByType.get(type).add(reservation);
-
-        return reservation;
     }
 
     @Override
     public List<Reservation> getAllReservations() {
+        // Return a snapshot (still thread-safe)
         List<Reservation> all = new ArrayList<>();
         reservationsByType.values().forEach(all::addAll);
         return Collections.unmodifiableList(all);
     }
 
-    /**
-     * Validates input arguments for reservation creation.
-     */
     private void validateInput(CarType type, LocalDateTime startDateTime, int days) {
         if (type == null)
             throw new IllegalArgumentException("Car type must not be null");
