@@ -63,6 +63,38 @@ public class InMemoryCarRentalService implements CarRentalService {
     }
 
     @Override
+    public void cancelReservation(String reservationId) {
+        if (reservationId == null || reservationId.isBlank()) {
+            throw new IllegalArgumentException("Reservation ID must not be null or blank");
+        }
+
+        boolean removed = false;
+
+        // Search for the reservation across all car types and remove it
+        for (CarType type : CarType.values()) {
+            List<Reservation> list = reservationsByType.get(type);
+            Iterator<Reservation> it = list.iterator();
+
+            while (it.hasNext()) {
+                Reservation r = it.next();
+                if (reservationId.equals(r.getId())) {
+                    it.remove();
+                    removed = true;
+                    break;
+                }
+            }
+
+            if (removed) {
+                break;
+            }
+        }
+
+        if (!removed) {
+            throw new IllegalArgumentException("Reservation not found: " + reservationId);
+        }
+    }
+
+    @Override
     public List<Reservation> getAllReservations() {
         List<Reservation> all = new ArrayList<>();
         reservationsByType.values().forEach(all::addAll);

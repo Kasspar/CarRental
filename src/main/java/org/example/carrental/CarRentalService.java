@@ -23,6 +23,14 @@ public interface CarRentalService {
     Reservation reserve(CarType type, LocalDateTime startDateTime, int days);
 
     /**
+     * Cancels an existing reservation by its ID.
+     *
+     * @param reservationId the ID of the reservation to cancel
+     * @throws IllegalArgumentException if the ID is null/blank or not found
+     */
+    void cancelReservation(String reservationId);
+
+    /**
      * Returns all reservations (useful for debugging and testing).
      */
     List<Reservation> getAllReservations();
